@@ -257,22 +257,21 @@ function loadFile(file, id) {
 async function loadNumbersFile(file, id) {
   const zone = document.getElementById(id);
   const ni = id === 'zone1' ? '1' : '2';
-  document.getElementById('cname' + ni).textContent = '読み込み中...';
+  document.getElementById('cname' + ni).textContent = '変換中...';
   zone.classList.add('loaded');
 
-  // base64エンコードしてAPIへ
-  const buf = await file.arrayBuffer();
-  const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-
-  const prompt = `以下はApple Numbersファイルをbase64エンコードしたものです。
-このファイルを読み込んで、CSVとして全行を出力してください。
-ヘッダー行を1行目として、全データ行を出力してください。
-カンマ区切りで、各値にダブルクォートを付けてください。
-他の説明文は一切不要で、CSVデータのみ出力してください。
-
-ファイル(base64): ${b64}`;
-
   try {
+    // ArrayBufferをbase64に変換
+    const buf = await file.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let b64 = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      b64 += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    b64 = btoa(b64);
+
+    // APIにPythonコード実行を依頼してCSVに変換
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -281,26 +280,35 @@ async function loadNumbersFile(file, id) {
         max_tokens: 8000,
         messages: [{
           role: 'user',
-          content: [{
-            type: 'document',
-            source: {type: 'base64', media_type: 'application/zip', data: b64}
-          }, {
-            type: 'text',
-            text: 'このApple Numbersファイルの全データをCSV形式（ヘッダー含む、カンマ区切り、ダブルクォートあり）で出力してください。説明文不要でCSVのみ出力。'
-          }]
+          content: `以下はApple Numbersファイルをbase64エンコードしたデータです。
+Pythonのnumbers-parserライブラリを使って読み込み、CSV形式に変換して出力してください。
+
+手順：
+1. base64をデコードしてバイナリファイルとして保存
+2. numbers_parserで読み込む
+3. 全行をCSV形式（カンマ区切り）で出力する
+4. **CSVデータのみ出力**（説明文・コードブロック一切不要）
+
+base64データ:
+${b64}`
         }]
       })
     });
 
-    if (!res.ok) throw new Error('API error');
+    if (!res.ok) throw new Error('API error: ' + res.status);
     const data = await res.json();
-    const csvText = (data.content||[]).map(b=>b.text||'').join('').replace(/```[\s\S]*?\n/g,'').replace(/```/g,'').trim();
+    const csvText = (data.content||[])
+      .map(b => b.text||'').join('')
+      .replace(/```[\s\S]*?\n/g,'').replace(/```/g,'').trim();
+
+    if (!csvText || csvText.length < 10) throw new Error('変換結果が空です');
+
     processLoadedRows(csvText, file.name, id);
+
   } catch(err) {
-    // APIが失敗した場合、バイナリから直接テキスト抽出を試みる
-    alert('.numbersファイルの読み込みに失敗しました。CSVファイルをお使いください。');
     zone.classList.remove('loaded');
     document.getElementById('cname' + ni).textContent = '';
+    alert('Numbersファイルの読み込みに失敗しました。\nNumbersで開き「ファイル→書き出す→CSV」でCSV保存してからお試しください。\n\nエラー: ' + err.message);
   }
 }
 
@@ -310,13 +318,15 @@ function loadCsvFile(file, id) {
     const buf = new Uint8Array(e.target.result);
     let text;
     if (buf[0]===0xEF && buf[1]===0xBB && buf[2]===0xBF) {
+      // UTF-8 BOM付き
       text = new TextDecoder('utf-8').decode(buf);
     } else {
-      const sjis = new TextDecoder('shift-jis').decode(buf);
       const utf8 = new TextDecoder('utf-8').decode(buf);
-      const sjisErrors = (sjis.match(/\uFFFD/g)||[]).length;
+      const sjis = new TextDecoder('shift-jis').decode(buf);
       const utf8Errors = (utf8.match(/\uFFFD/g)||[]).length;
-      text = sjisErrors <= utf8Errors ? sjis : utf8;
+      const sjisErrors = (sjis.match(/\uFFFD/g)||[]).length;
+      // UTF-8エラーがSJISより少ないか同数ならUTF-8優先
+      text = utf8Errors <= sjisErrors ? utf8 : sjis;
     }
     processLoadedRows(text, file.name, id);
   };
@@ -364,9 +374,19 @@ function parseCSV(text) {
     return cols;
   };
   const allLines = lines.split('\n');
-  const headers = parseRow(allLines[0]).map(h => h.replace(/^"|"$/g,'').trim());
+
+  // ヘッダー行を探す（PMXまたはCIDを含む行が本来のヘッダー）
+  let headerIdx = 0;
+  for (let i = 0; i < Math.min(5, allLines.length); i++) {
+    if (allLines[i].includes('PMX') || allLines[i].includes('CID')) {
+      headerIdx = i;
+      break;
+    }
+  }
+
+  const headers = parseRow(allLines[headerIdx]).map(h => h.replace(/^"|"$/g,'').trim());
   const rows = [];
-  for (let i = 1; i < allLines.length; i++) {
+  for (let i = headerIdx + 1; i < allLines.length; i++) {
     if (!allLines[i].trim()) continue;
     const cols = parseRow(allLines[i]);
     const row = {};
