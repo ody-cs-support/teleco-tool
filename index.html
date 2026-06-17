@@ -73,14 +73,7 @@
   }
   .drop-zone.loaded .drop-filename { display: block; }
 
-  .date-row { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
-  .date-row label { font-size: 13px; font-weight: 600; color: #444; white-space: nowrap; }
-  .date-row input[type=date] {
-    border: 1px solid #D0D3E0; border-radius: 8px; padding: 8px 14px;
-    font-size: 13px; font-family: inherit; color: #1A1A2E;
-    background: white; outline: none; transition: border 0.15s;
-  }
-  .date-row input[type=date]:focus { border-color: #FF6B35; }
+  
 
   .btn-generate {
     width: 100%; padding: 16px; background: #FF6B35; color: white;
@@ -170,13 +163,13 @@
     </div>
     <div class="step">
       <div class="step-num">STEP 2</div>
-      <div class="step-title">配達日を確認</div>
-      <div class="step-sub">タイトルに入る<br>日付を設定</div>
+      <div class="step-title">一覧を作成する</div>
+      <div class="step-sub">ボタンをクリックして<br>プレビュー確認</div>
     </div>
     <div class="step">
       <div class="step-num">STEP 3</div>
-      <div class="step-title">Excelを出力</div>
-      <div class="step-sub">ボタン1つで<br>ダウンロード</div>
+      <div class="step-title">Excelをダウンロード</div>
+      <div class="step-sub">ボタン1つで<br>色付きExcel出力</div>
     </div>
   </div>
 
@@ -207,13 +200,8 @@
     </div>
   </div>
 
-  <div class="date-row">
-    <label>配達日</label>
-    <input type="date" id="deliveryDate">
-  </div>
-
   <button class="btn-generate" id="btnGen" onclick="generate()" disabled>
-    ⚡ 一覧を作成する
+    🥗 一覧を作成する
   </button>
 
   <div class="preview-section" id="preview">
@@ -240,10 +228,7 @@ let rawData = { z1: null, z2: null };
 let companyName = { z1: '', z2: '' };
 let parsedData  = { c1: [], c2: [] };
 let commonPmx   = new Set();
-
-// 日付デフォルト
-const today = new Date();
-document.getElementById('deliveryDate').value = today.toISOString().slice(0,10);
+let deliveryDate = '';
 
 // ── CSV から社名を抽出 ───────────────────────────────────
 // ファイル名に含まれる会社名部分を取る（最初の「_」区切り or そのまま）
@@ -279,6 +264,11 @@ function loadFile(file, id) {
     const rows = parseCSV(text);
     const key  = id === 'zone1' ? 'z1' : 'z2';
     rawData[key] = rows;
+
+    // 1社目のCSVから配達日を自動取得
+    if (id === 'zone1' && rows.length > 0 && rows[0]['配達日']) {
+      deliveryDate = rows[0]['配達日'].trim();
+    }
 
     const cname = extractCompanyName(file.name, rows);
     companyName[key] = cname;
@@ -343,9 +333,7 @@ function generate() {
   parsedData.c1 = [...c1].sort((a,b) => parseInt(a['PMX'])-parseInt(b['PMX']));
   parsedData.c2 = [...c2].sort((a,b) => parseInt(a['PMX'])-parseInt(b['PMX']));
 
-  const d = document.getElementById('deliveryDate').value;
-  const [y,m,day] = d.split('-');
-  const dateLabel = `${y}/${m}/${day}`;
+  const dateLabel = deliveryDate || '日付不明';
   document.getElementById('previewTitle').textContent = `テレコ商品一覧　${dateLabel} 配達分`;
 
   const only1 = [...pmx1].filter(p => !pmx2.has(p)).length;
@@ -408,9 +396,8 @@ async function downloadExcel() {
   btn.disabled = true;
   btn.innerHTML = '⏳ 生成中...';
 
-  const d = document.getElementById('deliveryDate').value;
-  const [y,m,day] = d.split('-');
-  const dateLabel = `${y}/${m}/${day}`;
+  const dateLabel = deliveryDate || '日付不明';
+  const fileDateStr = dateLabel.replace(/\//g, '');
   const n1 = companyName.z1;
   const n2 = companyName.z2;
 
@@ -518,7 +505,7 @@ async function downloadExcel() {
   const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `テレコ商品一覧_${y}${m}${day}.xlsx`;
+  a.href = url; a.download = `テレコ商品一覧_${fileDateStr}.xlsx`;
   a.click(); URL.revokeObjectURL(url);
 
   btn.disabled = false;
