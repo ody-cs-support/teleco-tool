@@ -116,8 +116,8 @@
     overflow: hidden; margin-bottom: 24px;
   }
   .section-header { padding: 12px 16px; font-size: 13px; font-weight: 700; color: white; }
-  .section-header.c1 { background: #F57F17; }
-  .section-header.c2 { background: #1565C0; }
+  .section-header.c1 { background: #E65100; }
+  .section-header.c2 { background: #1A237E; }
 
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
   thead th {
@@ -143,6 +143,43 @@
     display: inline-block; font-size: 10px; font-weight: 700;
     background: #C8E6C9; color: #1B5E20; padding: 1px 6px;
     border-radius: 4px; margin-left: 6px; vertical-align: middle;
+  }
+
+  /* テレコ比較セクション */
+  .compare-wrap {
+    background: white; border-radius: 12px;
+    border: 2px solid #FF8A80; overflow: hidden; margin-bottom: 24px;
+  }
+  .compare-header {
+    background: #C62828; padding: 12px 16px;
+    font-size: 13px; font-weight: 700; color: white;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .compare-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .compare-table thead th {
+    padding: 9px 10px; font-size: 11px; font-weight: 600;
+    color: #555; text-align: center; border-bottom: 1px solid #E0E0E8;
+    background: #FFF5F5; white-space: nowrap;
+  }
+  .compare-table thead th.left { text-align: left; }
+  .compare-table tbody td {
+    padding: 8px 10px; border-bottom: 1px solid #FFEBEE;
+    vertical-align: middle; text-align: center;
+  }
+  .compare-table tbody td.left { text-align: left; }
+  .compare-table tbody tr:last-child td { border-bottom: none; }
+  .compare-table tbody tr { background: #FFF8F8; }
+  .qty-diff { font-weight: 700; }
+  .qty-diff.more { color: #C62828; }
+  .qty-same { color: #888; }
+  .tag-diff {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    background: #FFF3E0; color: #E65100; padding: 1px 6px;
+    border-radius: 4px; margin-left: 4px; vertical-align: middle;
+    border: 1px solid #FFCC80;
+  }
+  .billing-note {
+    font-size: 11px; color: #555; font-weight: 500; margin-top: 2px; display: inline-block;
   }
 </style>
 </head>
@@ -431,27 +468,84 @@ function generate() {
     <div class="summary-card blue"><div class="num">${only2}</div><div class="lbl">${n2}のみ</div></div>
   `;
 
+  // 数量が異なるテレコ被り商品のPMXセット
+  const map1 = Object.fromEntries(parsedData.c1.map(r => [String(parseInt(r['PMX'])), r]));
+  const map2 = Object.fromEntries(parsedData.c2.map(r => [String(parseInt(r['PMX'])), r]));
+  const diffPmx = new Set([...commonPmx].filter(pmx => {
+    const q1 = safeInt(map1[pmx]?.['配達予定個数']) || 0;
+    const q2 = safeInt(map2[pmx]?.['配達予定個数']) || 0;
+    return q1 !== q2;
+  }));
+
   document.getElementById('tables').innerHTML =
-    buildTable(n1, parsedData.c1, 'c1', 'normal-c1') +
-    buildTable(n2, parsedData.c2, 'c2', 'normal-c2');
+    buildOverlapTable(n1, n2, parsedData.c1, parsedData.c2) +
+    buildTable(n1, parsedData.c1, 'c1', 'normal-c1', diffPmx) +
+    buildTable(n2, parsedData.c2, 'c2', 'normal-c2', diffPmx);
 
   document.getElementById('preview').classList.add('visible');
   document.getElementById('preview').scrollIntoView({ behavior:'smooth', block:'start' });
 }
 
-function buildTable(title, rows, colorClass, normalClass) {
+function buildOverlapTable(n1, n2, rows1, rows2) {
+  if (commonPmx.size === 0) return '';
+
+  const map1 = Object.fromEntries(rows1.map(r => [String(parseInt(r['PMX'])), r]));
+  const map2 = Object.fromEntries(rows2.map(r => [String(parseInt(r['PMX'])), r]));
+
+  const rowsHtml = [...commonPmx].sort((a,b)=>parseInt(a)-parseInt(b)).map(pmx => {
+    const r1 = map1[pmx];
+    const r2 = map2[pmx];
+    const q1 = safeInt(r1?.['配達予定個数']) || 0;
+    const q2 = safeInt(r2?.['配達予定個数']) || 0;
+    const diff = q1 - q2;
+    let diffHtml;
+    if (diff === 0) {
+      diffHtml = `<span class="qty-same">同数（${q1}個）</span>`;
+    } else if (diff > 0) {
+      diffHtml = `<span class="qty-diff more">${n1}が${Math.abs(diff)}個多い</span><br><span class="billing-note">→ ${n1}の${Math.abs(diff)}個分は請求なし</span>`;
+    } else {
+      diffHtml = `<span class="qty-diff more">${n2}が${Math.abs(diff)}個多い</span><br><span class="billing-note">→ ${n2}の${Math.abs(diff)}個分は請求なし</span>`;
+    }
+    return `<tr>
+      <td class="left">${pmx}</td>
+      <td class="left">${r1?.['商品カテゴリ']||''}</td>
+      <td class="left">${r1?.['商品名']||''}</td>
+      <td>${q1}個</td>
+      <td>${q2}個</td>
+      <td>${diffHtml}</td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="compare-wrap">
+    <div class="compare-header">⚠️ テレコ被り商品　数量比較（${commonPmx.size}品）</div>
+    <table class="compare-table">
+      <thead><tr>
+        <th class="left">PMX</th>
+        <th class="left">カテゴリ</th>
+        <th class="left">商品名</th>
+        <th>${n1}<br>配達予定数</th>
+        <th>${n2}<br>配達予定数</th>
+        <th>差分</th>
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  </div>`;
+}
+
+function buildTable(title, rows, colorClass, normalClass, diffPmx = new Set()) {
   const rowsHtml = rows.map(r => {
     const pmx = String(parseInt(r['PMX']));
     const isOverlap = commonPmx.has(pmx);
     const isBihin   = (r['商品カテゴリ']||'').trim() === '備品';
+    const hasDiff   = diffPmx.has(pmx);
     const cls = isOverlap ? 'overlap' : isBihin ? 'bihin' : normalClass;
-    // 備品はタグなし、テレコ被り=請求あり、それ以外=請求なし
     const tag      = isBihin ? '' : isOverlap ? '<span class="tag-overlap">請求あり</span>' : '<span class="tag-seikyu">請求なし</span>';
+    const diffTag  = (isOverlap && hasDiff) ? '<span class="tag-diff">差分あり</span>' : '';
     const bihinTag = isBihin ? '<span style="display:inline-block;font-size:10px;font-weight:700;background:#CE93D8;color:#4A148C;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:middle;">備品</span>' : '';
     return `<tr class="${cls}">
       <td class="num">${pmx}</td>
       <td>${r['商品カテゴリ']||''}</td>
-      <td>${r['商品名']||''}${tag}${bihinTag}</td>
+      <td>${r['商品名']||''}${tag}${diffTag}${bihinTag}</td>
       <td class="num">${r['商品価格']||''}</td>
       <td class="num">${r['従業員販売価格']||''}</td>
       <td class="num">${r['配達予定個数']||''}</td>
@@ -463,7 +557,7 @@ function buildTable(title, rows, colorClass, normalClass) {
     <table>
       <thead><tr>
         <th class="num">PMX</th><th>カテゴリ</th><th>商品名</th>
-        <th class="num">定価</th><th class="num">社員価格</th><th class="num">配達予定数</th>
+        <th class="num">企業価格</th><th class="num">従業員購入価格</th><th class="num">配達予定数</th>
       </tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>
@@ -544,7 +638,7 @@ async function downloadExcel() {
     mergeRow(secRow, secArgb, {size:11, bold:true, color:{argb:'FFFFFFFF'}});
 
     // ヘッダ
-    addRow(['PMX','カテゴリ','商品名','定価','社員価格','配達予定数'], hdrArgb, {bold:true, color:{argb:'FFFFFFFF'}});
+    addRow(['PMX','カテゴリ','商品名','企業価格','従業員購入価格','配達予定数'], hdrArgb, {bold:true, color:{argb:'FFFFFFFF'}});
 
     // データ
     rows.forEach(r => {
@@ -577,8 +671,8 @@ async function downloadExcel() {
     ws.addRow([]);
   }
 
-  addSection(n1, parsedData.c1, 'FFF57F17','FFFF8F00','FFFFF9C4','FF333300');
-  addSection(n2, parsedData.c2, 'FF1565C0','FF1976D2','FFE3F2FD','FF0D2137');
+  addSection(n1, parsedData.c1, 'FFE65100','FFBF360C','FFFFF9C4','FF333300');
+  addSection(n2, parsedData.c2, 'FF1A237E','FF283593','FFE3F2FD','FF0D2137');
 
   // ダウンロード
   const buf = await wb.xlsx.writeBuffer();
