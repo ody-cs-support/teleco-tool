@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Numbers → CSV 書き出し手順書</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', sans-serif;
+  background: #F7F8FA; color: #1A1A2E;
+  padding: 40px 24px; max-width: 720px; margin: 0 auto;
+}
+h1 {
+  font-size: 20px; font-weight: 700; margin-bottom: 6px;
+  color: #1A1A2E;
+}
+.subtitle {
+  font-size: 13px; color: #888; margin-bottom: 36px;
+}
+.step-wrap { display: flex; flex-direction: column; gap: 24px; }
+
+.step {
+  background: white; border-radius: 12px;
+  border: 1px solid #E0E0E8; overflow: hidden;
+}
+.step-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 20px; border-bottom: 1px solid #F0F0F5;
+}
+.step-num {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: #1A1A2E; color: white;
+  font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.step-title { font-size: 15px; font-weight: 700; }
+.step-body { padding: 20px; }
+.step-desc { font-size: 13px; color: #444; line-height: 1.8; margin-bottom: 16px; }
+.step-desc strong { color: #1A1A2E; }
+
+/* Mock UI */
+.mock {
+  background: #F0F1F5; border-radius: 10px;
+  overflow: hidden; border: 1px solid #D8DAE5;
+  margin-top: 4px;
+}
+.mock-titlebar {
+  background: #E0E1E8; padding: 8px 14px;
+  display: flex; align-items: center; gap: 6px;
+}
+.mock-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+}
+.mock-dot.red { background: #FF5F57; }
+.mock-dot.yellow { background: #FEBC2E; }
+.mock-dot.green { background: #28C840; }
+.mock-menubar {
+  background: #F5F5F7; border-bottom: 1px solid #D8DAE5;
+  padding: 4px 14px; display: flex; gap: 20px;
+}
+.mock-menu-item {
+  font-size: 12px; color: #333; padding: 4px 8px;
+  border-radius: 4px; cursor: default;
+}
+.mock-menu-item.active {
+  background: #0071E3; color: white;
+}
+.mock-content { padding: 16px; }
+
+/* ドロップダウンメニュー */
+.mock-dropdown {
+  background: white; border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+  width: 200px; overflow: hidden;
+  border: 1px solid #D0D0D8; margin: 0 auto;
+}
+.mock-dropdown-item {
+  padding: 8px 16px; font-size: 12px; color: #1A1A2E;
+  border-bottom: 1px solid #F0F0F5; display: flex;
+  align-items: center; justify-content: space-between;
+}
+.mock-dropdown-item:last-child { border-bottom: none; }
+.mock-dropdown-item.active { background: #0071E3; color: white; }
+.mock-dropdown-item.sub { padding-left: 28px; color: #555; }
+.mock-dropdown-item.sub.active { background: #0071E3; color: white; }
+.mock-arrow { font-size: 10px; color: #888; }
+
+/* 書き出しダイアログ */
+.mock-dialog {
+  background: white; border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  width: 100%; max-width: 420px;
+  border: 1px solid #D0D0D8; margin: 0 auto;
+  overflow: hidden;
+}
+.mock-dialog-header {
+  background: #F5F5F7; padding: 12px 16px;
+  border-bottom: 1px solid #E0E0E8;
+  font-size: 13px; font-weight: 600; text-align: center;
+}
+.mock-dialog-body { padding: 20px; }
+.mock-format-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 8px; margin-bottom: 16px;
+}
+.mock-format-item {
+  text-align: center; padding: 10px 6px;
+  border-radius: 8px; border: 2px solid #E0E0E8;
+  font-size: 10px; color: #555; cursor: pointer;
+}
+.mock-format-item.selected {
+  border-color: #0071E3; background: #EBF3FD; color: #0071E3;
+}
+.mock-format-icon {
+  font-size: 22px; display: block; margin-bottom: 4px;
+}
+.mock-dialog-footer {
+  padding: 12px 16px; border-top: 1px solid #E0E0E8;
+  display: flex; justify-content: flex-end; gap: 8px;
+}
+.mock-btn {
+  padding: 6px 16px; border-radius: 6px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  border: 1px solid #D0D0D8; background: #F5F5F7; color: #333;
+}
+.mock-btn.primary {
+  background: #0071E3; color: white; border-color: #0071E3;
+}
+
+/* 保存ダイアログ */
+.mock-save {
+  background: white; border-radius: 10px;
+  border: 1px solid #D0D0D8;
+  overflow: hidden; max-width: 420px; margin: 0 auto;
+}
+.mock-save-header {
+  background: #F5F5F7; padding: 12px 16px;
+  border-bottom: 1px solid #E0E0E8;
+  font-size: 13px; font-weight: 600;
+}
+.mock-save-body { padding: 16px; }
+.mock-save-row {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 10px;
+}
+.mock-save-label { font-size: 12px; color: #555; width: 60px; flex-shrink: 0; }
+.mock-save-input {
+  flex: 1; padding: 6px 10px; border: 1px solid #C0C0C8;
+  border-radius: 6px; font-size: 12px; background: white;
+  color: #1A1A2E;
+}
+.mock-save-footer {
+  padding: 10px 16px; border-top: 1px solid #E0E0E8;
+  display: flex; justify-content: flex-end; gap: 8px;
+}
+
+/* ポイント注意書き */
+.tip {
+  background: #FFF8E1; border-left: 3px solid #FFC107;
+  border-radius: 0 8px 8px 0; padding: 10px 14px;
+  font-size: 12px; color: #555; line-height: 1.7;
+  margin-top: 12px;
+}
+.tip strong { color: #E65100; }
+
+.check-list { list-style: none; margin-top: 12px; }
+.check-list li {
+  font-size: 13px; color: #444; padding: 5px 0;
+  display: flex; align-items: flex-start; gap: 8px; line-height: 1.6;
+}
+.check-list li::before {
+  content: '✅'; flex-shrink: 0; margin-top: 1px;
+}
+
+.done-box {
+  background: #E8F5E9; border: 1px solid #A5D6A7;
+  border-radius: 10px; padding: 16px 20px;
+  text-align: center; margin-top: 24px;
+}
+.done-box .emoji { font-size: 32px; margin-bottom: 8px; }
+.done-box p { font-size: 14px; color: #2E7D32; font-weight: 600; }
+.done-box small { font-size: 12px; color: #555; }
+
+.arrow {
+  text-align: center; color: #888; font-size: 20px;
+  padding: 4px 0;
+}
+</style>
+</head>
+<body>
+
+<h1>📋 Numbers → CSV 書き出し手順書</h1>
+<p class="subtitle">テレコ商品一覧ツールを使うための事前準備です。5分でできます。</p>
+
+<div class="step-wrap">
+
+  <!-- STEP 1 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">1</div>
+      <div class="step-title">Numbersでファイルを開く</div>
+    </div>
+    <div class="step-body">
+      <p class="step-desc">配達データの <strong>.numbers ファイル</strong>をダブルクリックして、Numbersアプリで開きます。</p>
+      <div class="mock">
+        <div class="mock-titlebar">
+          <div class="mock-dot red"></div>
+          <div class="mock-dot yellow"></div>
+          <div class="mock-dot green"></div>
+          <span style="font-size:11px;color:#555;margin-left:8px;">医療法人一栁会_配達データ.numbers</span>
+        </div>
+        <div class="mock-menubar">
+          <span class="mock-menu-item">Numbers</span>
+          <span class="mock-menu-item active">ファイル</span>
+          <span class="mock-menu-item">編集</span>
+          <span class="mock-menu-item">表示</span>
+          <span class="mock-menu-item">挿入</span>
+        </div>
+        <div class="mock-content" style="background:#F9FAFB;min-height:60px;display:flex;align-items:center;justify-content:center;">
+          <span style="font-size:12px;color:#AAA;">スプレッドシートが表示されています</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">2</div>
+      <div class="step-title">「ファイル」メニューを開く</div>
+    </div>
+    <div class="step-body">
+      <p class="step-desc">画面上部のメニューバーから <strong>「ファイル」</strong> をクリックします。</p>
+      <div class="mock">
+        <div class="mock-titlebar">
+          <div class="mock-dot red"></div>
+          <div class="mock-dot yellow"></div>
+          <div class="mock-dot green"></div>
+        </div>
+        <div class="mock-menubar">
+          <span class="mock-menu-item">Numbers</span>
+          <span class="mock-menu-item active">ファイル ▾</span>
+          <span class="mock-menu-item">編集</span>
+          <span class="mock-menu-item">表示</span>
+        </div>
+        <div class="mock-content">
+          <div class="mock-dropdown">
+            <div class="mock-dropdown-item">新規</div>
+            <div class="mock-dropdown-item">開く...</div>
+            <div class="mock-dropdown-item">閉じる</div>
+            <div class="mock-dropdown-item">保存</div>
+            <div class="mock-dropdown-item" style="border-top:1px solid #E0E0E8;margin-top:4px;padding-top:8px;">
+              <span>書き出す</span> <span class="mock-arrow">▶</span>
+            </div>
+            <div class="mock-dropdown-item">共有</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">3</div>
+      <div class="step-title">「書き出す」→「CSV…」を選ぶ</div>
+    </div>
+    <div class="step-body">
+      <p class="step-desc">メニューの中から <strong>「書き出す」</strong> にマウスを合わせると右にサブメニューが出ます。<strong>「CSV…」</strong> をクリックしてください。</p>
+      <div class="mock">
+        <div class="mock-content" style="padding:12px;">
+          <div style="display:flex;gap:4px;">
+            <div class="mock-dropdown" style="width:180px;">
+              <div class="mock-dropdown-item">新規</div>
+              <div class="mock-dropdown-item">開く...</div>
+              <div class="mock-dropdown-item">閉じる</div>
+              <div class="mock-dropdown-item">保存</div>
+              <div class="mock-dropdown-item active">
+                <span>書き出す</span> <span>▶</span>
+              </div>
+              <div class="mock-dropdown-item">共有</div>
+            </div>
+            <div class="mock-dropdown" style="width:160px;margin-top:68px;">
+              <div class="mock-dropdown-item active">CSV…</div>
+              <div class="mock-dropdown-item sub">PDF…</div>
+              <div class="mock-dropdown-item sub">Excel…</div>
+              <div class="mock-dropdown-item sub">Numbers '09…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tip">⚠️ <strong>「PDF」や「Excel」ではなく「CSV」</strong>を選んでください。ツールはCSV形式のみ対応しています。</div>
+    </div>
+  </div>
+
+  <!-- STEP 4 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">4</div>
+      <div class="step-title">「次へ…」をクリックする</div>
+    </div>
+    <div class="step-body">
+      <p class="step-desc">書き出し形式の選択ダイアログが出ます。<strong>「CSV」が選択されていること</strong>を確認して、右下の <strong>「次へ…」</strong> ボタンをクリックします。</p>
+      <div class="mock">
+        <div class="mock-content">
+          <div class="mock-dialog">
+            <div class="mock-dialog-header">書き出す</div>
+            <div class="mock-dialog-body">
+              <div class="mock-format-grid">
+                <div class="mock-format-item selected">
+                  <span class="mock-format-icon">📄</span>CSV
+                </div>
+                <div class="mock-format-item">
+                  <span class="mock-format-icon">📕</span>PDF
+                </div>
+                <div class="mock-format-item">
+                  <span class="mock-format-icon">📗</span>Excel
+                </div>
+                <div class="mock-format-item">
+                  <span class="mock-format-icon">🔢</span>Numbers
+                </div>
+              </div>
+              <p style="font-size:11px;color:#888;">テキストエンコーディング: Unicode (UTF-8)</p>
+            </div>
+            <div class="mock-dialog-footer">
+              <div class="mock-btn">キャンセル</div>
+              <div class="mock-btn primary">次へ…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 5 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">5</div>
+      <div class="step-title">保存場所を選んで「書き出す」をクリック</div>
+    </div>
+    <div class="step-body">
+      <p class="step-desc">保存ダイアログが出ます。ファイル名はそのままでOKです。保存場所は <strong>「デスクトップ」</strong> にしておくと分かりやすいです。<strong>「書き出す」</strong> をクリックして完了です。</p>
+      <div class="mock">
+        <div class="mock-content">
+          <div class="mock-save">
+            <div class="mock-save-header">書き出す</div>
+            <div class="mock-save-body">
+              <div class="mock-save-row">
+                <div class="mock-save-label">保存名</div>
+                <div class="mock-save-input">医療法人一栁会_配達データ.csv</div>
+              </div>
+              <div class="mock-save-row">
+                <div class="mock-save-label">場所</div>
+                <div class="mock-save-input" style="color:#0071E3;">📁 デスクトップ</div>
+              </div>
+            </div>
+            <div class="mock-save-footer">
+              <div class="mock-btn">キャンセル</div>
+              <div class="mock-btn primary">書き出す</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tip">💡 ファイル名の末尾が <strong>.csv</strong> になっていればOKです。</div>
+    </div>
+  </div>
+
+  <!-- STEP 6 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">6</div>
+      <div class="step-title">CSVファイルをツールにドロップする</div>
+    </div>
+    <div class="step-body">
+      <p class="step-desc">デスクトップに保存された <strong>.csv ファイル</strong>を、テレコ商品一覧ツールのドロップゾーンにドラッグ&ドロップします。</p>
+      <ul class="check-list">
+        <li>ファイルの拡張子が <strong>.csv</strong> になっている</li>
+        <li>ツールのドロップゾーンに社名が表示される</li>
+        <li>2社分ドロップしたら「一覧を作成する」をクリック</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+<div class="done-box">
+  <div class="emoji">🥗</div>
+  <p>これで準備完了です！</p>
+  <small>うまくいかない場合は担当者（牧野）までご連絡ください。</small>
+</div>
+
+</body>
+</html>
