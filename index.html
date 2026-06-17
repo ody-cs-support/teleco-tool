@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>テレコ商品一覧ツール</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', sans-serif;
+    background: #F7F8FA; color: #1A1A2E; min-height: 100vh;
+  }
+  header {
+    background: #1A1A2E; padding: 20px 32px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  header .logo {
+    width: 32px; height: 32px; background: #FF6B35; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; color: white; font-weight: 700;
+  }
+  header h1 { font-size: 16px; font-weight: 600; color: #FFF; letter-spacing: 0.04em; }
+  header span { font-size: 12px; color: #888; margin-left: 4px; }
+
+  .main { max-width: 860px; margin: 0 auto; padding: 40px 24px; }
+
+  .steps {
+    display: flex; margin-bottom: 36px;
+    border: 1px solid #E0E0E8; border-radius: 12px; overflow: hidden; background: white;
+  }
+  .step { flex: 1; padding: 20px 18px; border-right: 1px solid #E0E0E8; }
+  .step:last-child { border-right: none; }
+  .step-num { font-size: 11px; font-weight: 700; color: #FF6B35; letter-spacing: 0.08em; margin-bottom: 6px; }
+  .step-title { font-size: 13px; font-weight: 600; }
+  .step-sub { font-size: 11px; color: #888; margin-top: 3px; line-height: 1.5; }
+
+  .drop-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+
+  .drop-zone {
+    border: 2px dashed #C8CADC; border-radius: 12px;
+    padding: 28px 20px; text-align: center; cursor: pointer;
+    transition: all 0.18s; background: white; position: relative;
+    min-height: 140px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 6px;
+  }
+  .drop-zone:hover, .drop-zone.dragover { border-color: #FF6B35; background: #FFF5F1; }
+  .drop-zone.loaded { border-color: #34C98A; border-style: solid; background: #F0FBF6; }
+  .drop-zone input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-num {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: #ECEDF5; color: #888; font-size: 13px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.18s; flex-shrink: 0;
+  }
+  .drop-zone.loaded .drop-num { background: #34C98A; color: white; }
+  .drop-icon-generic { font-size: 26px; }
+  .drop-main-label { font-size: 13px; font-weight: 700; color: #1A1A2E; }
+  .drop-company-name {
+    font-size: 12px; font-weight: 600; color: #34C98A;
+    max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    display: none;
+  }
+  .drop-zone.loaded .drop-company-name { display: block; }
+  .drop-hint { font-size: 11px; color: #AAA; }
+  .drop-zone.loaded .drop-hint { display: none; }
+  .drop-filename {
+    font-size: 10px; color: #AAA; font-weight: 400;
+    max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    display: none;
+  }
+  .drop-zone.loaded .drop-filename { display: block; }
+
+  .date-row { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+  .date-row label { font-size: 13px; font-weight: 600; color: #444; white-space: nowrap; }
+  .date-row input[type=date] {
+    border: 1px solid #D0D3E0; border-radius: 8px; padding: 8px 14px;
+    font-size: 13px; font-family: inherit; color: #1A1A2E;
+    background: white; outline: none; transition: border 0.15s;
+  }
+  .date-row input[type=date]:focus { border-color: #FF6B35; }
+
+  .btn-generate {
+    width: 100%; padding: 16px; background: #FF6B35; color: white;
+    border: none; border-radius: 12px; font-size: 15px; font-weight: 700;
+    cursor: pointer; letter-spacing: 0.04em; transition: background 0.15s, transform 0.1s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-generate:hover { background: #E85A24; }
+  .btn-generate:active { transform: scale(0.98); }
+  .btn-generate:disabled { background: #CCC; cursor: not-allowed; }
+
+  .preview-section { margin-top: 36px; display: none; }
+  .preview-section.visible { display: block; }
+  .preview-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .preview-title { font-size: 14px; font-weight: 700; color: #1A1A2E; }
+  .btn-download {
+    padding: 9px 20px; background: #1A1A2E; color: white;
+    border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
+    cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.15s;
+  }
+  .btn-download:hover { background: #333; }
+
+  .legend { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #555; }
+  .legend-dot { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+
+  .summary { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 20px; }
+  .summary-card {
+    background: white; border: 1px solid #E0E0E8; border-radius: 10px;
+    padding: 14px 16px; text-align: center;
+  }
+  .summary-card .num { font-size: 26px; font-weight: 700; }
+  .summary-card .lbl { font-size: 11px; color: #888; margin-top: 2px; }
+  .summary-card.red .num   { color: #C62828; }
+  .summary-card.amber .num { color: #E65100; }
+  .summary-card.blue .num  { color: #1565C0; }
+
+  .table-wrap {
+    background: white; border-radius: 12px; border: 1px solid #E0E0E8;
+    overflow: hidden; margin-bottom: 24px;
+  }
+  .section-header { padding: 12px 16px; font-size: 13px; font-weight: 700; color: white; }
+  .section-header.c1 { background: #F57F17; }
+  .section-header.c2 { background: #1565C0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead th {
+    padding: 9px 10px; font-size: 11px; font-weight: 600; color: #555;
+    text-align: left; border-bottom: 1px solid #E0E0E8; background: #FAFAFA; white-space: nowrap;
+  }
+  thead th.num { text-align: center; }
+  tbody td { padding: 8px 10px; border-bottom: 1px solid #F0F0F5; vertical-align: middle; line-height: 1.4; }
+  tbody td.num { text-align: center; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr.overlap { background: #FFEBEE; }
+  tbody tr.overlap td { color: #7F0000; font-weight: 600; }
+  tbody tr.normal-c1 { background: #FFFDE7; }
+  tbody tr.normal-c2 { background: #E3F2FD; }
+  tbody tr.bihin { background: #F3E5F5; }
+  tbody tr.bihin td { color: #4A148C; font-style: italic; }
+  .tag-overlap {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    background: #FF8A80; color: #7F0000; padding: 1px 6px;
+    border-radius: 4px; margin-left: 6px; vertical-align: middle;
+  }
+  .tag-seikyu {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    background: #C8E6C9; color: #1B5E20; padding: 1px 6px;
+    border-radius: 4px; margin-left: 6px; vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">T</div>
+  <h1>テレコ商品一覧ツール</h1>
+  <span>OFFICE DE YASAI</span>
+</header>
+
+<div class="main">
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">STEP 1</div>
+      <div class="step-title">CSVを読み込む</div>
+      <div class="step-sub">2社分のCSVを<br>それぞれドロップ</div>
+    </div>
+    <div class="step">
+      <div class="step-num">STEP 2</div>
+      <div class="step-title">配達日を確認</div>
+      <div class="step-sub">タイトルに入る<br>日付を設定</div>
+    </div>
+    <div class="step">
+      <div class="step-num">STEP 3</div>
+      <div class="step-title">Excelを出力</div>
+      <div class="step-sub">ボタン1つで<br>ダウンロード</div>
+    </div>
+  </div>
+
+  <div class="drop-row">
+    <div class="drop-zone" id="zone1"
+      ondragover="onDragOver(event,'zone1')"
+      ondragleave="onDragLeave('zone1')"
+      ondrop="onDrop(event,'zone1')">
+      <input type="file" accept=".csv" onchange="onFileChange(event,'zone1')">
+      <div class="drop-num">1</div>
+      <div class="drop-icon-generic">📄</div>
+      <div class="drop-main-label">1社目のCSV</div>
+      <div class="drop-company-name" id="cname1"></div>
+      <div class="drop-hint">ドロップ またはクリックして選択</div>
+      <div class="drop-filename" id="fname1"></div>
+    </div>
+    <div class="drop-zone" id="zone2"
+      ondragover="onDragOver(event,'zone2')"
+      ondragleave="onDragLeave('zone2')"
+      ondrop="onDrop(event,'zone2')">
+      <input type="file" accept=".csv" onchange="onFileChange(event,'zone2')">
+      <div class="drop-num">2</div>
+      <div class="drop-icon-generic">📄</div>
+      <div class="drop-main-label">2社目のCSV</div>
+      <div class="drop-company-name" id="cname2"></div>
+      <div class="drop-hint">ドロップ またはクリックして選択</div>
+      <div class="drop-filename" id="fname2"></div>
+    </div>
+  </div>
+
+  <div class="date-row">
+    <label>配達日</label>
+    <input type="date" id="deliveryDate">
+  </div>
+
+  <button class="btn-generate" id="btnGen" onclick="generate()" disabled>
+    ⚡ 一覧を作成する
+  </button>
+
+  <div class="preview-section" id="preview">
+    <div class="preview-header">
+      <div class="preview-title" id="previewTitle"></div>
+      <button class="btn-download" onclick="downloadExcel()">📥 Excelをダウンロード</button>
+    </div>
+    <div class="summary" id="summary"></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#FF8A80;"></div>テレコ被り（請求あり）</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#FFFDE7;border:1px solid #E0C800;"></div><span id="legend1">1社目のみ</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#E3F2FD;border:1px solid #90CAF9;"></div><span id="legend2">2社目のみ</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#F3E5F5;border:1px solid #CE93D8;"></div>備品</div>
+    </div>
+    <div id="tables"></div>
+  </div>
+</div>
+
+<script>
+// NaN対策: 数値変換ヘルパー
+function safeInt(v) { const n = parseInt(v); return isNaN(n) ? '' : n; }
+
+let rawData = { z1: null, z2: null };
+let companyName = { z1: '', z2: '' };
+let parsedData  = { c1: [], c2: [] };
+let commonPmx   = new Set();
+
+// 日付デフォルト
+const today = new Date();
+document.getElementById('deliveryDate').value = today.toISOString().slice(0,10);
+
+// ── CSV から社名を抽出 ───────────────────────────────────
+// ファイル名に含まれる会社名部分を取る（最初の「_」区切り or そのまま）
+function extractCompanyName(filename, rows) {
+  // CSVデータの中に会社名っぽいものがあればそこから
+  // なければファイル名から生成
+  const base = filename.replace(/\.csv$/i, '').replace(/_/g, ' ').replace(/日別販売量テ.ータ.*/,'').trim();
+  return base || filename;
+}
+
+// ── ドロップゾーン ───────────────────────────────────────
+function onDragOver(e, id) { e.preventDefault(); document.getElementById(id).classList.add('dragover'); }
+function onDragLeave(id)   { document.getElementById(id).classList.remove('dragover'); }
+function onDrop(e, id) { e.preventDefault(); onDragLeave(id); const f = e.dataTransfer.files[0]; if(f) loadFile(f,id); }
+function onFileChange(e, id) { const f = e.target.files[0]; if(f) loadFile(f,id); }
+
+function loadFile(file, id) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const buf = new Uint8Array(e.target.result);
+    // BOMチェック: UTF-8 BOM (EF BB BF) があればUTF-8、なければShift-JIS試行
+    let text;
+    if (buf[0]===0xEF && buf[1]===0xBB && buf[2]===0xBF) {
+      text = new TextDecoder('utf-8').decode(buf);
+    } else {
+      // Shift-JISでデコードし、文字化け(\uFFFD)が多ければUTF-8で再試行
+      const sjis = new TextDecoder('shift-jis').decode(buf);
+      const utf8 = new TextDecoder('utf-8').decode(buf);
+      const sjisErrors = (sjis.match(/\uFFFD/g)||[]).length;
+      const utf8Errors = (utf8.match(/\uFFFD/g)||[]).length;
+      text = sjisErrors <= utf8Errors ? sjis : utf8;
+    }
+    const rows = parseCSV(text);
+    const key  = id === 'zone1' ? 'z1' : 'z2';
+    rawData[key] = rows;
+
+    const cname = extractCompanyName(file.name, rows);
+    companyName[key] = cname;
+
+    const ni = id === 'zone1' ? '1' : '2';
+    document.getElementById('cname' + ni).textContent = cname;
+    document.getElementById('fname' + ni).textContent = file.name;
+    document.getElementById(id).classList.add('loaded');
+    checkReady();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// RFC4180準拠のCSVパーサー（引用符・カンマ含む値に対応）
+function parseCSV(text) {
+  const lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  const parseRow = line => {
+    const cols = [];
+    let cur = '', inQ = false, i = 0;
+    while (i < line.length) {
+      const c = line[i];
+      if (inQ) {
+        if (c==='"' && line[i+1]==='"') { cur+='"'; i+=2; }
+        else if (c==='"') { inQ=false; i++; }
+        else { cur+=c; i++; }
+      } else {
+        if (c==='"') { inQ=true; i++; }
+        else if (c===',') { cols.push(cur.trim()); cur=''; i++; }
+        else { cur+=c; i++; }
+      }
+    }
+    cols.push(cur.trim());
+    return cols;
+  };
+  const allLines = lines.split('\n');
+  const headers = parseRow(allLines[0]).map(h => h.replace(/^"|"$/g,'').trim());
+  const rows = [];
+  for (let i = 1; i < allLines.length; i++) {
+    if (!allLines[i].trim()) continue;
+    const cols = parseRow(allLines[i]);
+    const row = {};
+    headers.forEach((h,j) => row[h] = (cols[j]||'').replace(/^"|"$/g,'').trim());
+    if (row['PMX']) rows.push(row);
+  }
+  return rows;
+}
+
+function checkReady() {
+  document.getElementById('btnGen').disabled = !(rawData.z1 && rawData.z2);
+}
+
+// ── 生成 ─────────────────────────────────────────────────
+function generate() {
+  const EXCLUDE_CAT = [];
+  let c1 = rawData.z1;
+  let c2 = rawData.z2;
+
+  const pmx1 = new Set(c1.map(r => String(parseInt(r['PMX']))));
+  const pmx2 = new Set(c2.map(r => String(parseInt(r['PMX']))));
+  commonPmx = new Set([...pmx1].filter(p => pmx2.has(p)));
+
+  parsedData.c1 = [...c1].sort((a,b) => parseInt(a['PMX'])-parseInt(b['PMX']));
+  parsedData.c2 = [...c2].sort((a,b) => parseInt(a['PMX'])-parseInt(b['PMX']));
+
+  const d = document.getElementById('deliveryDate').value;
+  const [y,m,day] = d.split('-');
+  const dateLabel = `${y}/${m}/${day}`;
+  document.getElementById('previewTitle').textContent = `テレコ商品一覧　${dateLabel} 配達分`;
+
+  const only1 = [...pmx1].filter(p => !pmx2.has(p)).length;
+  const only2 = [...pmx2].filter(p => !pmx1.has(p)).length;
+
+  const n1 = companyName.z1;
+  const n2 = companyName.z2;
+
+  document.getElementById('legend1').textContent = n1 + 'のみ';
+  document.getElementById('legend2').textContent = n2 + 'のみ';
+
+  document.getElementById('summary').innerHTML = `
+    <div class="summary-card red"><div class="num">${commonPmx.size}</div><div class="lbl">テレコ被り商品</div></div>
+    <div class="summary-card amber"><div class="num">${only1}</div><div class="lbl">${n1}のみ</div></div>
+    <div class="summary-card blue"><div class="num">${only2}</div><div class="lbl">${n2}のみ</div></div>
+  `;
+
+  document.getElementById('tables').innerHTML =
+    buildTable(n1, parsedData.c1, 'c1', 'normal-c1') +
+    buildTable(n2, parsedData.c2, 'c2', 'normal-c2');
+
+  document.getElementById('preview').classList.add('visible');
+  document.getElementById('preview').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function buildTable(title, rows, colorClass, normalClass) {
+  const rowsHtml = rows.map(r => {
+    const pmx = String(parseInt(r['PMX']));
+    const isOverlap = commonPmx.has(pmx);
+    const isBihin   = (r['商品カテゴリ']||'').trim() === '備品';
+    const cls = isOverlap ? 'overlap' : isBihin ? 'bihin' : normalClass;
+    // 備品はタグなし、テレコ被り=請求あり、それ以外=請求なし
+    const tag      = isBihin ? '' : isOverlap ? '<span class="tag-overlap">請求あり</span>' : '<span class="tag-seikyu">請求なし</span>';
+    const bihinTag = isBihin ? '<span style="display:inline-block;font-size:10px;font-weight:700;background:#CE93D8;color:#4A148C;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:middle;">備品</span>' : '';
+    return `<tr class="${cls}">
+      <td class="num">${pmx}</td>
+      <td>${r['商品カテゴリ']||''}</td>
+      <td>${r['商品名']||''}${tag}${bihinTag}</td>
+      <td class="num">${r['商品価格']||''}</td>
+      <td class="num">${r['従業員販売価格']||''}</td>
+      <td class="num">${r['配達予定個数']||''}</td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="table-wrap">
+    <div class="section-header ${colorClass}">${title}</div>
+    <table>
+      <thead><tr>
+        <th class="num">PMX</th><th>カテゴリ</th><th>商品名</th>
+        <th class="num">定価</th><th class="num">社員価格</th><th class="num">配達予定数</th>
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  </div>`;
+}
+
+// ── Excel（ExcelJS・色付き確実） ──────────────────────────
+async function downloadExcel() {
+  const btn = document.querySelector('.btn-download');
+  btn.disabled = true;
+  btn.innerHTML = '⏳ 生成中...';
+
+  const d = document.getElementById('deliveryDate').value;
+  const [y,m,day] = d.split('-');
+  const dateLabel = `${y}/${m}/${day}`;
+  const n1 = companyName.z1;
+  const n2 = companyName.z2;
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('テレコ商品一覧');
+
+  // 列幅
+  ws.columns = [
+    {width:8},{width:22},{width:42},{width:8},{width:8},{width:11}
+  ];
+
+  const COLS = 6;
+
+  const thinBorder = {
+    top:{style:'thin',color:{argb:'FFBDBDBD'}},
+    bottom:{style:'thin',color:{argb:'FFBDBDBD'}},
+    left:{style:'thin',color:{argb:'FFBDBDBD'}},
+    right:{style:'thin',color:{argb:'FFBDBDBD'}}
+  };
+
+  function addRow(values, fillArgb, fontOpts, center=true) {
+    const row = ws.addRow(values);
+    row.height = 20;
+    row.eachCell({includeEmpty:true}, (cell, cn) => {
+      if (cn > COLS) return;
+      if (fillArgb) cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:fillArgb}};
+      cell.font = {name:'Arial', size:10, color:{argb:'FF000000'}, ...fontOpts};
+      cell.border = thinBorder;
+      cell.alignment = {horizontal: center ? 'center' : 'left', vertical:'middle', wrapText: false};
+    });
+    // 商品名列(C)は左寄せ
+    if (values.length >= 3 && row.getCell(3).value) {
+      row.getCell(3).alignment = {horizontal:'left', vertical:'middle', wrapText:true};
+    }
+    return row;
+  }
+
+  function mergeRow(row, fillArgb, fontOpts) {
+    ws.mergeCells(`A${row.number}:F${row.number}`);
+    const cell = row.getCell(1);
+    if (fillArgb) cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:fillArgb}};
+    cell.font = {name:'Arial', size:10, color:{argb:'FF000000'}, ...fontOpts};
+    cell.border = thinBorder;
+    cell.alignment = {horizontal:'center', vertical:'middle'};
+  }
+
+  // タイトル
+  const titleRow = ws.addRow([`テレコ商品一覧　${dateLabel} 配達分`]);
+  titleRow.height = 28;
+  mergeRow(titleRow, 'FF212121', {size:13, bold:true, color:{argb:'FFFFFFFF'}});
+
+  // 凡例
+  const legendRow = ws.addRow([`■ 赤=テレコ被り（請求あり）　■ 黄=${n1}のみ（請求なし）　■ 青=${n2}のみ（請求なし）　■ 紫=備品`]);
+  legendRow.height = 18;
+  mergeRow(legendRow, 'FFF5F5F5', {size:9, color:{argb:'FF444444'}});
+
+  // 空行
+  ws.addRow([]);
+
+  function addSection(label, rows, secArgb, hdrArgb, normalArgb, normalFontArgb) {
+    // 社名
+    const secRow = ws.addRow([label]);
+    secRow.height = 24;
+    mergeRow(secRow, secArgb, {size:11, bold:true, color:{argb:'FFFFFFFF'}});
+
+    // ヘッダ
+    addRow(['PMX','カテゴリ','商品名','定価','社員価格','配達予定数'], hdrArgb, {bold:true, color:{argb:'FFFFFFFF'}});
+
+    // データ
+    rows.forEach(r => {
+      const pmx = safeInt(r['PMX']);
+      if (pmx === '') return;
+      const isOverlap = commonPmx.has(String(pmx));
+      const isBihin   = (r['商品カテゴリ']||'').trim() === '備品';
+
+      let fillArgb, fontOpts;
+      if (isBihin) {
+        fillArgb = 'FFF3E5F5'; fontOpts = {color:{argb:'FF4A148C'}, italic:true};
+      } else if (isOverlap) {
+        fillArgb = 'FFFF8A80'; fontOpts = {bold:true, color:{argb:'FF7F0000'}};
+      } else {
+        fillArgb = normalArgb; fontOpts = {color:{argb:normalFontArgb}};
+      }
+
+      const dataRow = ws.addRow([pmx, r['商品カテゴリ']||'', r['商品名']||'',
+        safeInt(r['商品価格']), safeInt(r['従業員販売価格']), safeInt(r['配達予定個数'])]);
+      dataRow.height = 18;
+      dataRow.eachCell({includeEmpty:true}, (cell, cn) => {
+        if (cn > COLS) return;
+        cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:fillArgb}};
+        cell.font = {name:'Arial', size:10, ...fontOpts};
+        cell.border = thinBorder;
+        cell.alignment = {horizontal: cn===3 ? 'left' : 'center', vertical:'middle'};
+      });
+    });
+
+    ws.addRow([]);
+  }
+
+  addSection(n1, parsedData.c1, 'FFF57F17','FFFF8F00','FFFFF9C4','FF333300');
+  addSection(n2, parsedData.c2, 'FF1565C0','FF1976D2','FFE3F2FD','FF0D2137');
+
+  // ダウンロード
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `テレコ商品一覧_${y}${m}${day}.xlsx`;
+  a.click(); URL.revokeObjectURL(url);
+
+  btn.disabled = false;
+  btn.innerHTML = '📥 Excelをダウンロード';
+}
+</script>
+</body>
+</html>
