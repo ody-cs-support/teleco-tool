@@ -570,7 +570,7 @@ function buildTable(title, rows, colorClass, normalClass, diffPmx = new Set()) {
   </div>`;
 }
 
-// ── Excel（高速版・ExcelJS最小スタイル） ──────────────────
+// ── Excel（3シート構成） ──────────────────────────────
 async function downloadExcel() {
   const btn = document.querySelector('.btn-download');
   btn.disabled = true;
@@ -582,28 +582,21 @@ async function downloadExcel() {
   const n2 = companyName.z2;
 
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('テレコ商品一覧');
 
-  // 列幅: A-F=1社目 G=区切り H-M=2社目
-  ws.columns = [
-    {width:7},{width:15},{width:28},{width:8},{width:10},{width:9},
-    {width:2},
-    {width:7},{width:15},{width:28},{width:8},{width:10},{width:9}
-  ];
+  const TB = {top:{style:'thin',color:{argb:'FFBDBDBD'}},bottom:{style:'thin',color:{argb:'FFBDBDBD'}},left:{style:'thin',color:{argb:'FFBDBDBD'}},right:{style:'thin',color:{argb:'FFBDBDBD'}}};
 
-  const B = {top:{style:'thin',color:{argb:'FFBDBDBD'}},bottom:{style:'thin',color:{argb:'FFBDBDBD'}},left:{style:'thin',color:{argb:'FFBDBDBD'}},right:{style:'thin',color:{argb:'FFBDBDBD'}}};
-
-  // スタイル適用（最小限：fillとfontのみ、borderは主要行のみ）
-  function styleCell(cell, fill, bold, color, align, border) {
+  function styl(cell, fill, bold, color, align, border) {
     cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:fill}};
     cell.font = {name:'Arial', size:10, bold:!!bold, color:{argb:color||'FF000000'}};
     cell.alignment = {horizontal:align||'center', vertical:'middle', wrapText:align==='left'};
-    if (border) cell.border = B;
+    if (border) cell.border = TB;
   }
 
-  function fullRow(val, fill, bold, color, sz, h) {
+  function fullRow(ws, val, fill, bold, color, sz, h, cols) {
     const row = ws.addRow([val]); row.height = h||20;
-    ws.mergeCells(`A${row.number}:M${row.number}`);
+    const last = cols||6;
+    const lastLetter = String.fromCharCode(64+last);
+    ws.mergeCells(`A${row.number}:${lastLetter}${row.number}`);
     const c = row.getCell(1);
     c.fill = {type:'pattern',pattern:'solid',fgColor:{argb:fill}};
     c.font = {name:'Arial', size:sz||10, bold:!!bold, color:{argb:color||'FF000000'}};
@@ -611,82 +604,80 @@ async function downloadExcel() {
     return row;
   }
 
-  // タイトル・凡例
-  fullRow(`テレコ商品一覧　${dateLabel} 配達分`, 'FF212121', true, 'FFFFFFFF', 13, 28);
-  fullRow(`■ 赤=テレコ被り（請求あり）　■ 黄=${n1}のみ（請求差引）　■ 青=${n2}のみ（請求差引）　■ 紫=備品`, 'FFF5F5F5', false, 'FF444444', 9, 18);
-  ws.addRow([]).height = 6;
+  function safeM(ws, range) { try { ws.mergeCells(range); } catch(e) {} }
 
-  // ── テレコ比較セクション（全幅） ──
+  // ── diffPmx計算 ──
+  const mx1 = Object.fromEntries(parsedData.c1.map(r=>[String(safeInt(r['PMX'])),r]));
+  const mx2 = Object.fromEntries(parsedData.c2.map(r=>[String(safeInt(r['PMX'])),r]));
+  const dPmx = new Set([...commonPmx].filter(p=>(safeInt(mx1[p]?.['配達予定個数'])||0)!==(safeInt(mx2[p]?.['配達予定個数'])||0)));
+
+  // ════════════════════════════
+  // シート1: テレコ比較
+  // ════════════════════════════
+  const ws1 = wb.addWorksheet('テレコ比較');
+  ws1.columns = [{width:7},{width:16},{width:32},{width:14},{width:14},{width:20},{width:26}];
+
+  fullRow(ws1, `テレコ商品一覧　${dateLabel} 配達分`, 'FF212121', true, 'FFFFFFFF', 13, 28, 7);
+  fullRow(ws1, `■ 赤=テレコ被り（請求あり）　■ 黄=${n1}のみ（請求差引）　■ 青=${n2}のみ（請求差引）　■ 紫=備品`, 'FFF5F5F5', false, 'FF444444', 9, 18, 7);
+  ws1.addRow([]).height = 6;
+
   if (commonPmx.size > 0) {
-    const m1 = Object.fromEntries(parsedData.c1.map(r=>[String(safeInt(r['PMX'])),r]));
-    const m2 = Object.fromEntries(parsedData.c2.map(r=>[String(safeInt(r['PMX'])),r]));
+    fullRow(ws1, `⚠ テレコ被り商品　数量比較（${commonPmx.size}品）`, 'FFC62828', true, 'FFFFFFFF', 12, 24, 7);
 
-    fullRow(`⚠ テレコ被り商品　数量比較（${commonPmx.size}品）`, 'FFC62828', true, 'FFFFFFFF', 12, 24);
+    const ch = ws1.addRow(['PMX','カテゴリ','商品名',`${n1}\n配達予定数`,`${n2}\n配達予定数`,'差分','請求判定']);
+    ch.height = 28;
+    ch.eachCell((cell,cn) => { if(cn<=7) styl(cell,'FFFFF5F5',true,'FF555555','center',true); });
 
-    // 比較ヘッダ
-    const ch = ws.addRow([]); ch.height = 22;
-    [[1,'PMX'],[2,'カテゴリ'],[3,'商品名','C:E'],[6,`${n1} 配達予定数`,'F:G'],[8,`${n2} 配達予定数`,'H:I'],[10,'差分','J:K'],[12,'請求判定','L:M']].forEach(([col,label,merge])=>{
-      if(merge) (()=>{try{ws.mergeCells(`${merge}${ch.number}`);}catch(e){}})();
-      const c=ch.getCell(col); c.value=label;
-      styleCell(c,'FFFFF5F5',true,'FF555555','center',true);
-    });
-
-    // 比較データ
     [...commonPmx].sort((a,b)=>parseInt(a)-parseInt(b)).forEach(pmx=>{
-      const r1=m1[pmx],r2=m2[pmx];
+      const r1=mx1[pmx], r2=mx2[pmx];
       const q1=safeInt(r1?.['配達予定個数'])||0, q2=safeInt(r2?.['配達予定個数'])||0;
       const diff=q1-q2;
-      const dTxt=diff===0?'同数':diff>0?`${n1}が${Math.abs(diff)}個多い`:`${n2}が${Math.abs(diff)}個多い`;
-      const bTxt=diff===0?'—':diff>0?`${n1}の${Math.abs(diff)}個分は請求差引`:`${n2}の${Math.abs(diff)}個分は請求差引`;
-      const cr=ws.addRow([]); cr.height=18;
-      try{['C:E','F:G','H:I','J:K','L:M'].forEach(m=>(()=>{try{ws.mergeCells(`${m}${cr.number}`);}catch(e){}})());}catch(e){}
-      [[1,parseInt(pmx),'center'],[2,r1?.['商品カテゴリ']||'','left'],[3,r1?.['商品名']||'','left'],[6,q1,'center'],[8,q2,'center'],[10,dTxt,'left'],[12,bTxt,'left']].forEach(([col,val,align])=>{
-        const c=cr.getCell(col); c.value=val;
-        styleCell(c,'FFFFF8F8',diff!==0&&col>=10,diff!==0&&col>=10?'FFC62828':'FF1A1A2E',align,false);
+      const dTxt = diff===0?'同数':diff>0?`${n1}が${Math.abs(diff)}個多い`:`${n2}が${Math.abs(diff)}個多い`;
+      const bTxt = diff===0?'—':diff>0?`${n1}の${Math.abs(diff)}個分は請求差引`:`${n2}の${Math.abs(diff)}個分は請求差引`;
+      const cr = ws1.addRow([parseInt(pmx), r1?.['商品カテゴリ']||'', r1?.['商品名']||'', q1, q2, dTxt, bTxt]);
+      cr.height = 18;
+      const red = diff!==0;
+      cr.eachCell((cell,cn) => {
+        styl(cell,'FFFFF8F8', red&&cn>=6, red&&cn>=6?'FFC62828':'FF1A1A2E', cn<=3||cn>=6?'left':'center', false);
       });
     });
-    ws.addRow([]).height=6;
+  } else {
+    fullRow(ws1, 'テレコ被り商品はありません', 'FFF5F5F5', false, 'FF888888', 10, 24, 7);
   }
 
-  // ── 2社横並び ──
-  const mx1=Object.fromEntries(parsedData.c1.map(r=>[String(safeInt(r['PMX'])),r]));
-  const mx2=Object.fromEntries(parsedData.c2.map(r=>[String(safeInt(r['PMX'])),r]));
-  const dPmx=new Set([...commonPmx].filter(p=>(safeInt(mx1[p]?.['配達予定個数'])||0)!==(safeInt(mx2[p]?.['配達予定個数'])||0)));
+  // ════════════════════════════
+  // シート2: 1社目
+  // ════════════════════════════
+  function buildCompanySheet(ws, label, rows, secArgb, hdrArgb, normalArgb, normalFontArgb) {
+    ws.columns = [{width:7},{width:16},{width:36},{width:9},{width:12},{width:11}];
+    const COLS = 6;
 
-  // 社名ヘッダ
-  const sr=ws.addRow([]); sr.height=24;
-  ws.mergeCells(`A${sr.number}:F${sr.number}`); ws.mergeCells(`H${sr.number}:M${sr.number}`);
-  const sc1=sr.getCell(1); sc1.value=n1; styleCell(sc1,'FFE65100',true,'FFFFFFFF','center',true);
-  const sc2=sr.getCell(8); sc2.value=n2; styleCell(sc2,'FF1A237E',true,'FFFFFFFF','center',true);
+    fullRow(ws, `テレコ商品一覧　${dateLabel} 配達分`, 'FF212121', true, 'FFFFFFFF', 13, 28, 6);
+    fullRow(ws, `■ 赤=テレコ被り（請求あり）　■ 黄/青=正規商品（請求差引）　■ 紫=備品`, 'FFF5F5F5', false, 'FF444444', 9, 18, 6);
+    ws.addRow([]).height = 6;
 
-  // 列ヘッダ
-  const hr=ws.addRow([]); hr.height=20;
-  ['PMX','カテゴリ','商品名','企業価格','従業員購入価格','配達予定数'].forEach((h,i)=>{
-    const c1h=hr.getCell(i+1); c1h.value=h; styleCell(c1h,'FFBF360C',true,'FFFFFFFF','center',true);
-    const c2h=hr.getCell(i+8); c2h.value=h; styleCell(c2h,'FF283593',true,'FFFFFFFF','center',true);
-  });
+    fullRow(ws, label, secArgb, true, 'FFFFFFFF', 11, 24, 6);
 
-  // データ行
-  const s1=[...parsedData.c1].sort((a,b)=>parseInt(a['PMX'])-parseInt(b['PMX']));
-  const s2=[...parsedData.c2].sort((a,b)=>parseInt(a['PMX'])-parseInt(b['PMX']));
+    const hr = ws.addRow(['PMX','カテゴリ','商品名','企業価格','従業員購入価格','配達予定数']);
+    hr.height = 22;
+    hr.eachCell((cell,cn) => { if(cn<=COLS) styl(cell, hdrArgb, true, 'FFFFFFFF', 'center', true); });
 
-  for(let i=0;i<Math.max(s1.length,s2.length);i++){
-    const dr=ws.addRow([]); dr.height=16;
-    [s1[i],s2[i]].forEach((r,side)=>{
-      if(!r) return;
-      const pmx=safeInt(r['PMX']),ps=String(pmx);
-      const isOv=commonPmx.has(ps),isBh=(r['商品カテゴリ']||'').trim()==='備品',haDf=dPmx.has(ps);
-      const fill=isBh?'FFF3E5F5':isOv?'FFFF8A80':side===0?'FFFFF9C4':'FFE3F2FD';
-      const fc=isBh?'FF4A148C':isOv?'FF7F0000':side===0?'FF333300':'FF0D2137';
-      const bold=isOv&&!isBh;
+    [...rows].sort((a,b)=>parseInt(a['PMX'])-parseInt(b['PMX'])).forEach(r => {
+      const pmx = safeInt(r['PMX']); if(pmx==='') return;
+      const ps = String(pmx);
+      const isOv = commonPmx.has(ps), isBh = (r['商品カテゴリ']||'').trim()==='備品', haDf = dPmx.has(ps);
+      const fill = isBh?'FFF3E5F5':isOv?'FFFF8A80':normalArgb;
+      const fc   = isBh?'FF4A148C':isOv?'FF7F0000':normalFontArgb;
+      const bold = isOv&&!isBh;
       let suf=''; if(!isBh&&isOv) suf+='【請求あり】'; if(isOv&&haDf) suf+='【差分あり】'; if(!isBh&&!isOv) suf+='【請求差引】';
-      const off=side===0?0:7;
-      [pmx,r['商品カテゴリ']||'',(r['商品名']||'')+' '+suf,safeInt(r['商品価格']),safeInt(r['従業員販売価格']),safeInt(r['配達予定個数'])].forEach((v,ci)=>{
-        const c=dr.getCell(ci+1+off); c.value=v;
-        styleCell(c,fill,bold,fc,ci===2?'left':'center',false);
-      });
+      const dr = ws.addRow([pmx, r['商品カテゴリ']||'', (r['商品名']||'')+' '+suf, safeInt(r['商品価格']), safeInt(r['従業員販売価格']), safeInt(r['配達予定個数'])]);
+      dr.height = 16;
+      dr.eachCell((cell,cn) => { if(cn<=COLS) styl(cell, fill, bold, fc, cn===3?'left':'center', false); });
     });
   }
+
+  buildCompanySheet(wb.addWorksheet(n1.slice(0,31)), n1, parsedData.c1, 'FFE65100','FFBF360C','FFFFF9C4','FF333300');
+  buildCompanySheet(wb.addWorksheet(n2.slice(0,31)), n2, parsedData.c2, 'FF1A237E','FF283593','FFE3F2FD','FF0D2137');
 
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
@@ -698,6 +689,7 @@ async function downloadExcel() {
   btn.disabled = false;
   btn.innerHTML = '📥 Excelをダウンロード';
 }
+
 </script>
 </body>
 </html>
